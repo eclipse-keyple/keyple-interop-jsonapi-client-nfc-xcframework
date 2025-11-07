@@ -36,6 +36,50 @@ on the Keyple website [keyple.org](https://keyple.org).
 
 Using this library, iPhones are able to communicate with ISO14443-4 compliant smart cards.
 
+## Installation
+
+### Swift Package Manager
+
+The recommended way to integrate Keyple Interop XCFramework into your iOS project is using Swift Package Manager.
+
+#### Adding the Package in Xcode
+
+1. Open your project in Xcode
+2. Go to **File** → **Add Package Dependencies...**
+3. Enter the repository URL:
+   ```
+   https://github.com/eclipse-keyple/keyple-interop-ios-xcframework.git
+   ```
+4. Select the version rule that suits your needs (e.g., "Up to Next Major Version")
+5. Click **Add Package**
+6. Select the `KeypleInteropXCFramework` product and add it to your target
+
+#### Adding the Package via Package.swift
+
+If you're building a Swift package or want to add the dependency manually, add the following to your `Package.swift` file:
+
+```swift
+dependencies: [
+    .package(
+        url: "https://github.com/eclipse-keyple/keyple-interop-ios-xcframework.git",
+        from: "1.0.0" // Replace with the desired version
+    )
+]
+```
+
+Then add `KeypleInteropXCFramework` to your target's dependencies:
+
+```swift
+targets: [
+    .target(
+        name: "YourTarget",
+        dependencies: [
+            .product(name: "KeypleInteropXCFramework", package: "keyple-interop-ios-xcframework")
+        ]
+    )
+]
+```
+
 ## Development
 
 ### Prerequisites
