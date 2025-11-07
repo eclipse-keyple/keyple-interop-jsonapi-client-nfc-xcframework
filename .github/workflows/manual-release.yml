@@ -1,0 +1,131 @@
+name: Manual Release XCFramework
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract project name and version
+        id: metadata
+        run: |
+          PROJECT_NAME=$(grep "^rootProject\.name" settings.gradle.kts | cut -d'=' -f2 | tr -d ' "')
+          echo "project-name=$PROJECT_NAME" >> $GITHUB_OUTPUT
+          PROJECT_VERSION=$(grep "^version" gradle.properties | cut -d'=' -f2 | tr -d ' ')
+          echo "project-version=$PROJECT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if this version is already released
+        run: |
+          PROJECT_VERSION=${{ steps.metadata.outputs.project-version }}
+          
+          if git tag -l | grep -q "^${PROJECT_VERSION}$"; then
+            echo "Error: Tag 'PROJECT_VERSION' already exists. Please update the version in gradle.properties."
+            exit 1
+          fi
+
+      - name: Extract changelog section
+        id: changelog
+        run: |
+          echo "Make the script executable"
+          chmod +x ./.github/scripts/extract_changelog.sh
+          
+          echo "Run the script and capture the changelog text"
+          CHANGELOG_TEXT=$(./.github/scripts/extract_changelog.sh "${{ steps.metadata.outputs.project-version }}")
+          
+          echo "Display the changelog content for debugging"
+          echo "----- Extracted changelog for version ${{ steps.metadata.outputs.project-version }} -----"
+          echo "$CHANGELOG_TEXT"
+          echo "-------------------------------------------------------------"
+          
+          # Export multiline changelog
+          {
+            echo "changelog<<EOF"
+            printf "%s\n" "$CHANGELOG_TEXT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build XCFramework
+        run: ./gradlew assembleXCFramework --no-daemon
+
+      - name: Validate XCFramework
+        run: |
+          echo "Find the generated XCFramework"
+          XCFRAMEWORK_PATH=$(find build/XCFrameworks/release -name "*.xcframework" -type d | head -1)
+          if [ -z "$XCFRAMEWORK_PATH" ]; then
+            echo "Error: No XCFramework found in build/XCFrameworks/release"
+            exit 1
+          fi
+          echo "Found XCFramework: $XCFRAMEWORK_PATH"
+          
+          echo "Verify XCFramework structure"
+          if [ ! -f "$XCFRAMEWORK_PATH/Info.plist" ]; then
+            echo "Error: Info.plist not found in XCFramework"
+            exit 1
+          fi
+          
+          echo "List contents for verification"
+          echo "XCFramework contents:"
+          ls -R "$XCFRAMEWORK_PATH"
+          echo "XCFramework validation completed successfully"
+
+      - name: Zip artifact
+        run: |
+          cd build/XCFrameworks/release
+          XCFRAMEWORK=$(ls -d *.xcframework | head -1)
+          echo "Found XCFramework: $XCFRAMEWORK"
+          zip -r ../../../${{ steps.metadata.outputs.project-name }}-${{ steps.metadata.outputs.project-version }}-xcframework.zip "$XCFRAMEWORK"
+
+      - name: Compute checksum
+        id: compute_checksum
+        run: |
+          CHECKSUM=$(swift package compute-checksum ${{ steps.metadata.outputs.project-name }}-${{ steps.metadata.outputs.project-version }}-xcframework.zip)
+          echo "checksum=$CHECKSUM" >> $GITHUB_ENV
+          echo "Computed checksum: $CHECKSUM"
+
+      - name: Update Package.swift file
+        run: |
+          TIMESTAMP=" // Generated on $(date '+%Y-%m-%d %H:%M:%S')"
+          PERMALINK="https://github.com/${{ github.repository }}/releases/download/${{ steps.metadata.outputs.project-version }}/${{ steps.metadata.outputs.project-name }}-${{ steps.metadata.outputs.project-version }}-xcframework.zip"
+          
+          echo "Replace the URL value"
+          sed -i '' "s|url: \".*\"|url: \"$PERMALINK\"|" Package.swift
+          
+          echo "Replace the checksum value"
+          sed -i '' "s|checksum: *\"[^\"]*\").*$|checksum: \"${{ env.checksum }}\")$TIMESTAMP|" Package.swift
+          
+          echo "Package.swift updated."
+          cat Package.swift
+
+      - name: Commit and tag changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add Package.swift
+          git commit -m "Update Package.swift for release ${{ steps.metadata.outputs.project-version }}"
+          git tag ${{ steps.metadata.outputs.project-version }}
+          git push
+          git push --tags
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.metadata.outputs.project-version }}
+          name: Release ${{ steps.metadata.outputs.project-version }}
+          body: |
+            ${{ steps.changelog.outputs.changelog }}
+          files: ${{ steps.metadata.outputs.project-name }}-${{ steps.metadata.outputs.project-version }}-xcframework.zip
