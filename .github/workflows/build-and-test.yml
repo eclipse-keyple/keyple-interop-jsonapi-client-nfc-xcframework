@@ -1,0 +1,47 @@
+name: Build and Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build XCFramework
+        run: ./gradlew assembleXCFramework --no-daemon
+
+      - name: Validate XCFramework
+        run: |
+          echo "Find the generated XCFramework"
+          XCFRAMEWORK_PATH=$(find build/XCFrameworks/release -name "*.xcframework" -type d | head -1)
+          if [ -z "$XCFRAMEWORK_PATH" ]; then
+            echo "Error: No XCFramework found in build/XCFrameworks/release"
+            exit 1
+          fi
+          echo "Found XCFramework: $XCFRAMEWORK_PATH"
+          
+          echo "Verify XCFramework structure"
+          if [ ! -f "$XCFRAMEWORK_PATH/Info.plist" ]; then
+            echo "Error: Info.plist not found in XCFramework"
+            exit 1
+          fi
+          
+          echo "List contents for verification"
+          echo "XCFramework contents:"
+          ls -R "$XCFRAMEWORK_PATH"
+          echo "XCFramework validation completed successfully"

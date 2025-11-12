@@ -1,4 +1,4 @@
-# Keyple Interop XCFramework
+# Keyple Interop iOS XCFramework
 
 [![License](https://img.shields.io/badge/License-EPL_2.0-blue.svg)](https://www.eclipse.org/legal/epl-2.0/)
 [![iOS](https://img.shields.io/badge/iOS-14%2B-green.svg)](https://developer.apple.com/)
